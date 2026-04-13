@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Laravel ToDoアプリ作成手順 (2026-04-13) - ToDo新規作成機能</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; color: #333; line-height: 1.75; }
+  h1 { border-bottom: 3px solid #3490dc; padding-bottom: .5rem; }
+  h2 { border-left: 5px solid #3490dc; padding-left: .6rem; margin-top: 2.5rem; }
+  h3 { margin-top: 1.8rem; color: #444; }
+  h4 { color: #666; margin-top: 1.2rem; }
+  pre { background: #272822; color: #f8f8f2; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: .88rem; }
+  code { background: #f1f1f1; padding: 2px 6px; border-radius: 3px; font-size: .9em; }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ddd; padding: .5rem .8rem; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  .note { background: #fffbea; border-left: 4px solid #f0c419; padding: .8rem 1rem; margin: 1rem 0; }
+  .trouble { background: #fff1f0; border-left: 4px solid #e74c3c; padding: 1rem 1.2rem; margin: 1.5rem 0; border-radius: 4px; }
+  .trouble h3 { margin-top: 0; color: #c0392b; }
+  .solve { background: #e8f8f0; border-left: 4px solid #27ae60; padding: .8rem 1rem; margin: 1rem 0; border-radius: 4px; }
+  .date { color: #888; font-size: .9rem; }
+  .ng { color: #e74c3c; font-weight: bold; }
+  .ok { color: #27ae60; font-weight: bold; }
+  .diagram { background: #f9f9f9; border: 1px solid #ddd; padding: 1rem; border-radius: 6px; margin: 1rem 0; font-family: "Menlo", monospace; white-space: pre; font-size: .85rem; overflow-x: auto; }
+  .compare { display: flex; gap: 1rem; margin: 1rem 0; }
+  .compare > div { flex: 1; padding: .8rem; border-radius: 4px; }
+  .compare .bad { background: #fff1f0; border: 1px solid #e74c3c; }
+  .compare .good { background: #e8f8f0; border: 1px solid #27ae60; }
+</style>
+</head>
+<body>
+
+<h1>Laravel ToDoアプリ 作成手順 (Day 2)</h1>
+<p class="date">作業日: 2026-04-13 / 内容: ToDo新規作成機能の実装</p>
+
+<h2>本日のゴール</h2>
+<ul>
+  <li>一覧画面の「+ 新規作成」ボタンから遷移する <strong>新規作成フォーム画面</strong> の作成</li>
+  <li>バリデーション付きで <strong>データベースに保存</strong> する機能の実装</li>
+  <li>作成後に一覧画面へリダイレクトし、成功メッセージを表示</li>
+</ul>
+
+<h2>新規作成機能の全体像</h2>
+<div class="diagram">[一覧画面]
+    ↓ 「+ 新規作成」ボタン
+    ↓ GET /todos/create
+[TodoController@create]
+    ↓ view('todos.create')
+[新規作成フォーム画面]
+    ↓ 「作成」ボタン
+    ↓ POST /todos
+[StoreTodoRequest]   ← バリデーション
+    ↓ OK
+[TodoController@store]
+    ↓ Todo::create()
+[データベースに保存]
+    ↓ redirect
+[一覧画面] + 成功メッセージ</div>
+
+<h2>1. 必要なファイル</h2>
+<table>
+  <thead><tr><th>役割</th><th>ファイル</th></tr></thead>
+  <tbody>
+    <tr><td>フォーム画面を表示するメソッド</td><td><code>TodoController@create</code></td></tr>
+    <tr><td>フォームのビュー</td><td><code>resources/views/todos/create.blade.php</code></td></tr>
+    <tr><td>バリデーション用のフォームリクエスト</td><td><code>app/Http/Requests/StoreTodoRequest.php</code></td></tr>
+    <tr><td>データを保存するメソッド</td><td><code>TodoController@store</code></td></tr>
+  </tbody>
+</table>
+
+<h2>2. フォームリクエストの作成</h2>
+<pre><code>sail artisan make:request StoreTodoRequest</code></pre>
+
+<h3>StoreTodoRequest.php の中身</h3>
+<pre><code>use Illuminate\Validation\Rule;
+
+public function authorize(): bool
+{
+    return true;
+}
+
+public function rules(): array
+{
+    return [
+        'title' =&gt; ['required', 'string', 'max:100'],
+        'description' =&gt; ['nullable', 'string', 'max:65535'],
+        'status' =&gt; ['required', Rule::in(['未着手', '進行中', '完了'])],
+        'started_at' =&gt; ['nullable', 'date'],
+        'completed_at' =&gt; ['nullable', 'date', 'after_or_equal:started_at'],
+    ];
+}
+
+public function attributes(): array
+{
+    return [
+        'title' =&gt; 'タイトル',
+        'description' =&gt; '詳細',
+        'status' =&gt; 'ステータス',
+        'started_at' =&gt; '開始日',
+        'completed_at' =&gt; '完了日',
+    ];
+}</code></pre>
+
+<div class="note">
+  <strong>ポイント:</strong>
+  <ul>
+    <li><code>authorize()</code> は <code>true</code> にしないと403エラー</li>
+    <li><code>after_or_equal:started_at</code> で完了日が開始日以降であることを保証</li>
+    <li><code>attributes()</code> でエラー文言を日本語化</li>
+  </ul>
+</div>
+
+<h2>3. コントローラーの create / store</h2>
+<pre><code>use App\Http\Requests\StoreTodoRequest;
+use App\Models\Todo;
+
+public function create()
+{
+    return view('todos.create');
+}
+
+public function store(StoreTodoRequest $request)
+{
+    Todo::create($request-&gt;validated());
+
+    return redirect()-&gt;route('todos.index')
+        -&gt;with('success', 'ToDoを作成しました');
+}</code></pre>
+
+<h2>4. フォームビュー</h2>
+<p><code>resources/views/todos/create.blade.php</code></p>
+<pre><code>@extends('layouts.app')
+
+@section('title', 'ToDo新規作成')
+
+@section('content')
+    &lt;div class="max-w-2xl mx-auto"&gt;
+        &lt;h2 class="text-xl font-semibold text-gray-700 mb-6"&gt;ToDo新規作成&lt;/h2&gt;
+
+        @if ($errors-&gt;any())
+            &lt;div class="bg-red-50 border border-red-300 text-red-700 p-4 rounded mb-4"&gt;
+                &lt;ul class="list-disc list-inside"&gt;
+                    @foreach ($errors-&gt;all() as $error)
+                        &lt;li&gt;{{ $error }}&lt;/li&gt;
+                    @endforeach
+                &lt;/ul&gt;
+            &lt;/div&gt;
+        @endif
+
+        &lt;form action="{{ route('todos.store') }}" method="POST" class="bg-white shadow rounded-lg p-6 space-y-4"&gt;
+            @csrf
+
+            &lt;!-- タイトル --&gt;
+            &lt;div&gt;
+                &lt;label class="block text-sm font-medium text-gray-700 mb-1"&gt;タイトル&lt;/label&gt;
+                &lt;input type="text" name="title" value="{{ old('title') }}" maxlength="100"
+                       class="w-full border-gray-300 rounded shadow-sm border p-2"&gt;
+            &lt;/div&gt;
+
+            &lt;!-- 詳細 --&gt;
+            &lt;div&gt;
+                &lt;label class="block text-sm font-medium text-gray-700 mb-1"&gt;詳細&lt;/label&gt;
+                &lt;textarea name="description" rows="4" class="w-full border-gray-300 rounded shadow-sm border p-2"&gt;{{ old('description') }}&lt;/textarea&gt;
+            &lt;/div&gt;
+
+            &lt;!-- ステータス --&gt;
+            &lt;div&gt;
+                &lt;label class="block text-sm font-medium text-gray-700 mb-1"&gt;ステータス &lt;span class="text-red-500"&gt;*&lt;/span&gt;&lt;/label&gt;
+                &lt;select name="status" class="w-full border-gray-300 rounded shadow-sm border p-2"&gt;
+                    @foreach (['未着手', '進行中', '完了'] as $status)
+                        &lt;option value="{{ $status }}" {{ old('status') === $status ? 'selected' : '' }}&gt;
+                            {{ $status }}
+                        &lt;/option&gt;
+                    @endforeach
+                &lt;/select&gt;
+            &lt;/div&gt;
+
+            &lt;!-- 開始日 / 完了日 --&gt;
+            &lt;div class="grid grid-cols-2 gap-4"&gt;
+                &lt;div&gt;
+                    &lt;label class="block text-sm font-medium text-gray-700 mb-1"&gt;開始日&lt;/label&gt;
+                    &lt;input type="date" name="started_at" value="{{ old('started_at') }}"
+                           class="w-full border-gray-300 rounded shadow-sm border p-2"&gt;
+                &lt;/div&gt;
+                &lt;div&gt;
+                    &lt;label class="block text-sm font-medium text-gray-700 mb-1"&gt;完了日&lt;/label&gt;
+                    &lt;input type="date" name="completed_at" value="{{ old('completed_at') }}"
+                           class="w-full border-gray-300 rounded shadow-sm border p-2"&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;div class="flex justify-end gap-2 pt-4"&gt;
+                &lt;a href="{{ route('todos.index') }}"
+                   class="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-100"&gt;キャンセル&lt;/a&gt;
+                &lt;button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow"&gt;作成&lt;/button&gt;
+            &lt;/div&gt;
+        &lt;/form&gt;
+    &lt;/div&gt;
+@endsection</code></pre>
+
+<hr>
+
+<h1 style="color: #c0392b;">本日詰まったポイント</h1>
+
+<div class="trouble">
+<h3>トラブル①: Class "APP\Http\Requests\StoreTodoRequest" does not exist</h3>
+
+<h4>現象</h4>
+<p>新規作成しようとするとクラスが見つからないエラーが発生。</p>
+
+<h4>原因</h4>
+<p>コントローラーの <code>use</code> 文で名前空間の大文字小文字を誤っていた。</p>
+
+<div class="compare">
+  <div class="bad">
+    <strong class="ng">NG:</strong><br>
+    <code>use APP\Http\Requests\StoreTodoRequest;</code>
+  </div>
+  <div class="good">
+    <strong class="ok">OK:</strong><br>
+    <code>use App\Http\Requests\StoreTodoRequest;</code>
+  </div>
+</div>
+
+<h4>解決方法</h4>
+<p>PHPの名前空間は<strong>大文字小文字を厳密に区別する</strong>。<code>composer.json</code> の autoload 定義では <code>"App\\"</code> となっているため、<code>App</code> が正しい。</p>
+
+<div class="note">
+  <strong>教訓:</strong> 名前空間のタイポは <code>class not found</code> の頻出原因。特に <code>App</code>/<code>APP</code>/<code>app</code> の取り違えに注意。
+</div>
+</div>
+
+<div class="trouble">
+<h3>トラブル②: ステータス選択肢の先頭に <code>&gt;</code> が表示される</h3>
+
+<h4>現象</h4>
+<p>セレクトボックスを開いた時、「&gt; 未着手」のように先頭に <code>&gt;</code> が表示されてしまう。</p>
+
+<h4>原因</h4>
+<p><code>&lt;option&gt;</code> タグの中身（テキスト部分）に、属性として書くべき <code>selected</code> 判定の式を記述していた。</p>
+
+<div class="compare">
+  <div class="bad">
+    <strong class="ng">NG:</strong>
+<pre style="background:#fff; color:#333; padding:.5rem; font-size:.8rem; margin-top:.3rem;"><code>&lt;option value="{{ $status }}"&gt;
+    {{ old('status') === $status ? 'selected' : '' }}
+    {{ $status }}
+&lt;/option&gt;</code></pre>
+  </div>
+  <div class="good">
+    <strong class="ok">OK:</strong>
+<pre style="background:#fff; color:#333; padding:.5rem; font-size:.8rem; margin-top:.3rem;"><code>&lt;option value="{{ $status }}" {{ old('status') === $status ? 'selected' : '' }}&gt;
+    {{ $status }}
+&lt;/option&gt;</code></pre>
+  </div>
+</div>
+
+<h4>図解: HTMLのタグ構造</h4>
+<div class="diagram">&lt;option value="未着手" selected&gt;未着手&lt;/option&gt;
+        ├──────┬──────┤├──┤├──┤
+        │      │       │   │
+      属性   属性の値  属性  ← ここに selected を書く
+                             （タグの &gt; より前）
+
+                       ↓↓↓
+
+      &lt;option ...&gt; ここはタグの「中身」（画面に表示される文字） &lt;/option&gt;
+                   ↑
+                   ここに selected を書いても、ただの文字として表示されてしまう</div>
+
+<h4>解決方法</h4>
+<p><code>selected</code> は <strong><code>&lt;option&gt;</code> の属性</strong>なので、タグの <code>&gt;</code> より前に書く。三項演算子の結果として <code>selected</code> 文字列が出力されれば、ブラウザが属性として解釈してくれる。</p>
+</div>
+
+<div class="trouble">
+<h3>トラブル③: ステータスが「in Valid」エラーになる</h3>
+
+<h4>現象</h4>
+<p>フォーム送信すると「ステータス must be one of the following types...」のバリデーションエラー。<br>
+<code>dd($request-&gt;all())</code> で確認すると <code>status =&gt; "未着手"</code> と正常に送られているのに、なぜかバリデーションを通らない。</p>
+
+<h4>原因</h4>
+<p><code>in:</code> ルールの区切り文字を <strong>日本語の読点「、」</strong>で書いていた。</p>
+
+<div class="compare">
+  <div class="bad">
+    <strong class="ng">NG:</strong><br>
+    <code>'status' =&gt; ['required', 'in:未着手、進行中、完了']</code>
+    <p style="margin-top:.5rem; font-size:.85rem;">→ 「未着手、進行中、完了」という1つの文字列として扱われる</p>
+  </div>
+  <div class="good">
+    <strong class="ok">OK:</strong><br>
+    <code>'status' =&gt; ['required', 'in:未着手,進行中,完了']</code>
+    <p style="margin-top:.5rem; font-size:.85rem;">→ 3つの値として正しく区切られる</p>
+  </div>
+</div>
+
+<h4>図解: in ルールのパース</h4>
+<div class="diagram">ASCIIカンマ「,」の場合:
+'in:未着手,進行中,完了'
+      ↓ Laravel がカンマで分割
+    ['未着手', '進行中', '完了']   ← 3つの許可値として認識 ✅
+
+日本語の読点「、」の場合:
+'in:未着手、進行中、完了'
+      ↓ Laravel はカンマを探す（見つからない）
+    ['未着手、進行中、完了']       ← 1つの許可値として認識 ❌
+      ↓
+    送信値 "未着手" は一致しないのでバリデーションエラー</div>
+
+<h4>解決方法</h4>
+<p>区切り文字は<strong>必ず半角カンマ「,」</strong>を使う。ただし、このような区切り文字のミスを防ぐため、<strong><code>Rule::in([...])</code> の形式を使うのがより安全</strong>。</p>
+
+<pre><code>use Illuminate\Validation\Rule;
+
+'status' =&gt; ['required', Rule::in(['未着手', '進行中', '完了'])],</code></pre>
+
+<div class="note">
+  <strong>教訓:</strong>
+  <ul>
+    <li>日本語入力中に<strong>読点「、」とカンマ「,」を取り違えやすい</strong>ので注意</li>
+    <li>配列で渡す <code>Rule::in([...])</code> なら区切り文字の問題が発生しない</li>
+    <li>バリデーションエラーが「値は正しいのに弾かれる」場合、<strong>ルール側の記述ミスを疑う</strong></li>
+  </ul>
+</div>
+
+<h4>デバッグに使ったテクニック</h4>
+<p>FormRequestクラスの <code>prepareForValidation()</code> メソッドでバリデーション前の値をダンプ:</p>
+<pre><code>protected function prepareForValidation(): void
+{
+    dd($this-&gt;all());
+}</code></pre>
+<p>コントローラーの <code>store()</code> に <code>dd()</code> を書いても、バリデーションエラーで <code>store()</code> まで到達しないので動作しない。その場合は FormRequest 側でダンプする。</p>
+</div>
+
+<hr>
+
+<h2>動作確認</h2>
+<ol>
+  <li>一覧画面で「+ 新規作成」ボタンをクリック</li>
+  <li>フォームに入力して「作成」ボタンをクリック</li>
+  <li>一覧画面にリダイレクトされ、作成したToDoが表示されればOK</li>
+</ol>
+
+<h2>次回の予定</h2>
+<ul>
+  <li>ToDo詳細画面の実装（一覧のタイトルをクリックで遷移）</li>
+  <li>ToDo編集画面の実装</li>
+  <li>ToDo削除機能の実装</li>
+</ul>
+
+</body>
+</html>

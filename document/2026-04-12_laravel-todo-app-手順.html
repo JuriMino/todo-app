@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Laravel ToDoアプリ作成手順 (2026-04-12)</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; color: #333; line-height: 1.7; }
+  h1 { border-bottom: 3px solid #3490dc; padding-bottom: .5rem; }
+  h2 { border-left: 5px solid #3490dc; padding-left: .6rem; margin-top: 2.5rem; }
+  h3 { margin-top: 1.8rem; color: #555; }
+  pre { background: #272822; color: #f8f8f2; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: .9rem; }
+  code { background: #f1f1f1; padding: 2px 6px; border-radius: 3px; font-size: .9em; }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ddd; padding: .5rem .8rem; text-align: left; }
+  th { background: #f4f4f4; }
+  .note { background: #fffbea; border-left: 4px solid #f0c419; padding: .8rem 1rem; margin: 1rem 0; }
+  .date { color: #888; font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<h1>Laravel ToDoアプリ 作成手順</h1>
+<p class="date">作業日: 2026-04-12</p>
+
+<h2>1. Laravelプロジェクトの作成 (Docker/Sail)</h2>
+<p>Laravel公式のDocker環境「Sail」でプロジェクトを作成。</p>
+<pre><code>curl -s "https://laravel.build/todo-app?php=84" | bash</code></pre>
+<div class="note">
+  デフォルトのPHPバージョン(8.5)のイメージが存在しなかったため <code>?php=84</code> を指定。
+</div>
+
+<h3>Sailエイリアスの登録</h3>
+<pre><code>echo "alias sail='[ -f sail ] && sh sail || sh vendor/bin/sail'" &gt;&gt; ~/.zshrc
+source ~/.zshrc</code></pre>
+
+<h3>起動</h3>
+<pre><code>cd todo-app
+sail up -d</code></pre>
+
+<h2>2. テーブル設計</h2>
+<table>
+  <thead><tr><th>カラム</th><th>型</th><th>説明</th></tr></thead>
+  <tbody>
+    <tr><td>id</td><td>bigint</td><td>主キー</td></tr>
+    <tr><td>title</td><td>string(100)</td><td>タイトル (必須)</td></tr>
+    <tr><td>description</td><td>text</td><td>詳細 (任意)</td></tr>
+    <tr><td>status</td><td>string(20)</td><td>未着手 / 進行中 / 完了</td></tr>
+    <tr><td>started_at</td><td>date</td><td>開始予定日 (任意)</td></tr>
+    <tr><td>completed_at</td><td>date</td><td>完了予定日 (任意)</td></tr>
+    <tr><td>created_at / updated_at</td><td>datetime</td><td>自動</td></tr>
+  </tbody>
+</table>
+<div class="note">
+  開始日/完了日は「予定」として手動入力。実際の開始日・完了日は将来的に別カラムで追加する方針。
+</div>
+
+<h2>3. モデル・マイグレーション・コントローラー作成</h2>
+<pre><code>sail artisan make:model Todo -mcr</code></pre>
+<p><code>-mcr</code> = migration + controller + resource</p>
+
+<h3>マイグレーションファイル編集</h3>
+<p><code>database/migrations/xxxx_xx_xx_create_todos_table.php</code></p>
+<pre><code>public function up(): void
+{
+    Schema::create('todos', function (Blueprint $table) {
+        $table-&gt;id();
+        $table-&gt;string('title', 100);
+        $table-&gt;text('description')-&gt;nullable();
+        $table-&gt;string('status', 20)-&gt;default('未着手');
+        $table-&gt;date('started_at')-&gt;nullable();
+        $table-&gt;date('completed_at')-&gt;nullable();
+        $table-&gt;timestamps();
+    });
+}</code></pre>
+
+<h3>マイグレーション実行</h3>
+<pre><code>sail artisan migrate</code></pre>
+
+<h3>Sequel Ace での接続確認</h3>
+<table>
+  <tr><th>Host</th><td>127.0.0.1</td></tr>
+  <tr><th>Port</th><td>3306</td></tr>
+  <tr><th>Username</th><td>sail</td></tr>
+  <tr><th>Password</th><td>password</td></tr>
+  <tr><th>Database</th><td>todo_app</td></tr>
+</table>
+
+<h2>4. モデル設定</h2>
+<p><code>app/Models/Todo.php</code></p>
+<pre><code>protected $fillable = [
+    'title',
+    'description',
+    'status',
+    'started_at',
+    'completed_at',
+];
+
+protected $casts = [
+    'started_at' =&gt; 'date',
+    'completed_at' =&gt; 'date',
+];</code></pre>
+
+<h2>5. ルーティング</h2>
+<p><code>routes/web.php</code></p>
+<pre><code>use App\Http\Controllers\TodoController;
+
+Route::resource('todos', TodoController::class);</code></pre>
+
+<p>確認コマンド:</p>
+<pre><code>sail artisan route:list</code></pre>
+
+<h2>6. コントローラー (index)</h2>
+<p><code>app/Http/Controllers/TodoController.php</code></p>
+<pre><code>use App\Models\Todo;
+
+public function index()
+{
+    $todos = Todo::orderBy('created_at', 'desc')-&gt;get();
+
+    return view('todos.index', compact('todos'));
+}</code></pre>
+
+<h2>7. レイアウトファイル作成</h2>
+<p><code>resources/views/layouts/app.blade.php</code></p>
+<pre><code>&lt;!DOCTYPE html&gt;
+&lt;html lang="ja"&gt;
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;title&gt;@yield('title', 'ToDoアプリ')&lt;/title&gt;
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+&lt;/head&gt;
+&lt;body class="bg-gray-50 min-h-screen"&gt;
+    &lt;header class="bg-white shadow"&gt;
+        &lt;div class="max-w-5xl mx-auto px-6 py-4"&gt;
+            &lt;h1 class="text-2xl font-bold text-gray-800"&gt;ToDoアプリ&lt;/h1&gt;
+        &lt;/div&gt;
+    &lt;/header&gt;
+    &lt;main class="max-w-5xl mx-auto px-6 py-8"&gt;
+        @yield('content')
+    &lt;/main&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+<h2>8. 一覧ビュー</h2>
+<p><code>resources/views/todos/index.blade.php</code></p>
+<pre><code>@extends('layouts.app')
+
+@section('title', 'ToDo一覧')
+
+@section('content')
+    &lt;div class="flex justify-between items-center mb-6"&gt;
+        &lt;h2 class="text-xl font-semibold text-gray-700"&gt;ToDo一覧&lt;/h2&gt;
+        &lt;a href="{{ route('todos.create') }}"
+           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow"&gt;
+            + 新規作成
+        &lt;/a&gt;
+    &lt;/div&gt;
+
+    &lt;div class="bg-white shadow rounded-lg overflow-hidden"&gt;
+        &lt;table class="min-w-full divide-y divide-gray-200"&gt;
+            &lt;thead class="bg-gray-100"&gt;
+                &lt;tr&gt;
+                    &lt;th class="px-6 py-3 text-left text-sm font-medium text-gray-600"&gt;タイトル&lt;/th&gt;
+                    &lt;th class="px-6 py-3 text-left text-sm font-medium text-gray-600"&gt;ステータス&lt;/th&gt;
+                    &lt;th class="px-6 py-3 text-left text-sm font-medium text-gray-600"&gt;開始日&lt;/th&gt;
+                    &lt;th class="px-6 py-3 text-left text-sm font-medium text-gray-600"&gt;完了日&lt;/th&gt;
+                    &lt;th class="px-6 py-3 text-left text-sm font-medium text-gray-600"&gt;作成日&lt;/th&gt;
+                &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody class="divide-y divide-gray-200"&gt;
+                @forelse ($todos as $todo)
+                    &lt;tr class="hover:bg-gray-50"&gt;
+                        &lt;td class="px-6 py-4 text-gray-800"&gt;{{ $todo-&gt;title }}&lt;/td&gt;
+                        &lt;td class="px-6 py-4"&gt;
+                            &lt;span @class([
+                                'px-2 py-1 rounded text-xs font-semibold',
+                                'bg-gray-200 text-gray-700' =&gt; $todo-&gt;status === '未着手',
+                                'bg-yellow-200 text-yellow-800' =&gt; $todo-&gt;status === '進行中',
+                                'bg-green-200 text-green-800' =&gt; $todo-&gt;status === '完了',
+                            ])&gt;
+                                {{ $todo-&gt;status }}
+                            &lt;/span&gt;
+                        &lt;/td&gt;
+                        &lt;td class="px-6 py-4 text-gray-600"&gt;{{ $todo-&gt;started_at?-&gt;format('Y-m-d') ?? '-' }}&lt;/td&gt;
+                        &lt;td class="px-6 py-4 text-gray-600"&gt;{{ $todo-&gt;completed_at?-&gt;format('Y-m-d') ?? '-' }}&lt;/td&gt;
+                        &lt;td class="px-6 py-4 text-gray-600"&gt;{{ $todo-&gt;created_at-&gt;format('Y-m-d') }}&lt;/td&gt;
+                    &lt;/tr&gt;
+                @empty
+                    &lt;tr&gt;
+                        &lt;td colspan="5" class="px-6 py-8 text-center text-gray-500"&gt;
+                            ToDoがまだありません
+                        &lt;/td&gt;
+                    &lt;/tr&gt;
+                @endforelse
+            &lt;/tbody&gt;
+        &lt;/table&gt;
+    &lt;/div&gt;
+@endsection</code></pre>
+
+<h2>9. Vite起動</h2>
+<pre><code>sail npm install
+sail npm run dev</code></pre>
+<div class="note">
+  「Vite manifest not found」エラーが出たら <code>sail npm run dev</code> を起動したままにする。
+</div>
+
+<h2>動作確認URL</h2>
+<p><code>http://localhost/todos</code> にアクセス。</p>
+
+<h2>次回の予定</h2>
+<ul>
+  <li>ダミーデータを tinker で投入して一覧表示を確認</li>
+  <li>ToDo新規作成画面の実装</li>
+  <li>ToDo詳細画面の実装</li>
+  <li>ToDo編集画面の実装</li>
+  <li>ToDo削除機能の実装</li>
+</ul>
+
+</body>
+</html>
