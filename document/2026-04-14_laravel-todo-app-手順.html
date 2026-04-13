@@ -289,11 +289,139 @@ public function update(UpdateTodoRequest $request, Todo $todo)
   <li>値を変更して「更新」 → 詳細画面に戻り、更新された値が表示される</li>
 </ol>
 
+<hr>
+
+<h2>4. GitHubへのアップロード</h2>
+
+<h3>事前準備: ディレクトリ構成の整理</h3>
+<p>手順書(HTML)を todo-app 配下に移動してプロジェクトと一緒に管理。</p>
+<pre><code>cd /Users/jmino/myProject
+mkdir -p todo-app/document
+mv 2026-04-12_laravel-todo-app-手順.html todo-app/document/
+mv 2026-04-13_laravel-todo-app-手順.html todo-app/document/
+mv 2026-04-14_laravel-todo-app-手順.html todo-app/document/</code></pre>
+
+<div class="diagram">todo-app/
+├── app/
+├── config/
+├── database/
+├── document/                ← 追加
+│   ├── 2026-04-12_...html
+│   ├── 2026-04-13_...html
+│   └── 2026-04-14_...html
+├── resources/
+├── routes/
+└── ...</div>
+
+<h3>手順1: GitHub CLI (gh) のインストール</h3>
+<pre><code>brew install gh</code></pre>
+
+<h3>手順2: GitHub にログイン</h3>
+<pre><code>gh auth login</code></pre>
+<p>対話式で以下のように選択:</p>
+<ol>
+  <li>What account do you want to log into? → <strong>GitHub.com</strong></li>
+  <li>What is your preferred protocol for Git operations? → <strong>HTTPS</strong></li>
+  <li>Authenticate Git with your GitHub credentials? → <strong>Yes</strong></li>
+  <li>How would you like to authenticate? → <strong>Login with a web browser</strong></li>
+</ol>
+<p>表示されるワンタイムコードをコピー → Enter → ブラウザで貼り付けて認証。</p>
+
+<pre><code>gh auth status   # ログイン確認</code></pre>
+
+<h3>手順3: Git初期化</h3>
+<p>Laravelプロジェクト作成時にはgit初期化されていなかったため手動で実行。</p>
+<pre><code>cd /Users/jmino/myProject/todo-app
+git init
+git branch -M main</code></pre>
+
+<h3>手順4: コミット前の確認</h3>
+<pre><code>git status</code></pre>
+<p>以下が <strong>含まれていないこと</strong> を必ず確認:</p>
+<table>
+  <thead><tr><th>ファイル/ディレクトリ</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td><code>.env</code></td><td>DB接続情報などの機密情報</td></tr>
+    <tr><td><code>vendor/</code></td><td>Composerの依存パッケージ</td></tr>
+    <tr><td><code>node_modules/</code></td><td>npmの依存パッケージ</td></tr>
+    <tr><td><code>public/build/</code></td><td>Viteのビルド成果物</td></tr>
+    <tr><td><code>storage/*.key</code></td><td>アプリキー</td></tr>
+  </tbody>
+</table>
+<p>これらは Laravel デフォルトの <code>.gitignore</code> で除外されている。</p>
+
+<h3>手順5: コミット</h3>
+<pre><code>git add .
+git commit -m "Initial commit: ToDoアプリと作業手順書"</code></pre>
+
+<h3>手順6: GitHubリポジトリ作成 &amp; push</h3>
+<pre><code>gh repo create todo-app --public --source=. --remote=origin --push</code></pre>
+<table>
+  <thead><tr><th>オプション</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td><code>--public</code></td><td>公開リポジトリ (非公開なら <code>--private</code>)</td></tr>
+    <tr><td><code>--source=.</code></td><td>現在のディレクトリをソースに (ドットを忘れない)</td></tr>
+    <tr><td><code>--remote=origin</code></td><td>リモート名を origin に</td></tr>
+    <tr><td><code>--push</code></td><td>作成後すぐに push</td></tr>
+  </tbody>
+</table>
+
+<h3>手順7: ブラウザで確認</h3>
+<pre><code>gh repo view --web</code></pre>
+
+<hr>
+
+<h1 style="color: #c0392b;">GitHub手順で詰まったポイント</h1>
+
+<div class="trouble">
+<h3>トラブル③: fatal: not a git repository</h3>
+<h4>現象</h4>
+<p><code>git status</code> 実行時にエラー。</p>
+<h4>原因</h4>
+<p>Laravel の新規プロジェクトは git が自動初期化されていないことがある。</p>
+<h4>解決方法</h4>
+<pre><code>git init
+git branch -M main</code></pre>
+</div>
+
+<div class="trouble">
+<h3>トラブル④: command not found: gh</h3>
+<h4>現象</h4>
+<p><code>gh</code> コマンドが使えない。</p>
+<h4>原因</h4>
+<p>GitHub CLI 未インストール。</p>
+<h4>解決方法</h4>
+<pre><code>brew install gh
+gh auth login</code></pre>
+</div>
+
+<div class="trouble">
+<h3>トラブル⑤: --source=, is not a git repository</h3>
+<h4>現象</h4>
+<pre><code>gh repo create todo-app --public --source=, --remote=origin --push
+→ /Users/jmino/myProject/todo-app/, is not a git repository</code></pre>
+<h4>原因</h4>
+<p><code>--source</code> の値がカンマ <code>,</code> になっていた (正しくはドット <code>.</code>)。</p>
+<div class="compare">
+  <div class="bad">
+    <strong class="ng">NG:</strong> <code>--source=,</code>
+  </div>
+  <div class="good">
+    <strong class="ok">OK:</strong> <code>--source=.</code> (「現在のディレクトリ」を意味)
+  </div>
+</div>
+<h4>解決方法</h4>
+<pre><code>gh repo create todo-app --public --source=. --remote=origin --push</code></pre>
+</div>
+
+<hr>
+
 <h2>次回の予定</h2>
 <ul>
   <li>ToDo削除機能の実装</li>
   <li>削除確認ダイアログ</li>
   <li>全機能の動作確認</li>
+  <li>変更を GitHub に push する流れの確認</li>
 </ul>
 
 </body>
