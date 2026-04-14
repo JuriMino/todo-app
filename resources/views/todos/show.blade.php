@@ -71,15 +71,23 @@
                 {{-- 詳細 --}}
                 <div>
                     <div class="text-xs text-slate-500 mb-2">詳細</div>
-                    <div class="text-slate-700 leading-relaxed whitespace-pre-wrap wrap-break-word">{{ $todo->description ?? '—' }}</div>
+                    <div class="text-slate-700 leading-relaxed whitespace-pre-wrap wrap-break-word">
+                        {{ $todo->description ?? '—' }}</div>
                 </div>
             </div>
             {{-- アクション --}}
             <div class="px-8 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+                <form action="{{ route('todos.destroy', $todo) }}" method="POST"
+                    onsubmit="return confirm('このToDoを削除します。よろしいですか？')">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit"
+                        class="px-4 py-2 text-sm fount-medium bg-red-600 text-white hover:bg-red-400 rounded-lg transition">削除</button>
+                </form>
                 <a href="{{ route('todos.edit', $todo) }}"
-                     class="px-4 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition">
-                      編集
-                  </a>
+                    class="px-4 py-2 text-sm font-medium bg-slate-800 hover:bg-slate-500 text-white rounded-lg transition">
+                    編集
+                </a>
             </div>
         </div>
     </div>

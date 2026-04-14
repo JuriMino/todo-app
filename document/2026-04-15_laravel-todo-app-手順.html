@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Laravel ToDoアプリ作成手順 (2026-04-15) - 削除機能</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; color: #333; line-height: 1.75; }
+  h1 { border-bottom: 3px solid #3490dc; padding-bottom: .5rem; }
+  h2 { border-left: 5px solid #3490dc; padding-left: .6rem; margin-top: 2.5rem; }
+  h3 { margin-top: 1.8rem; color: #444; }
+  h4 { color: #666; margin-top: 1.2rem; }
+  pre { background: #272822; color: #f8f8f2; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: .88rem; }
+  code { background: #f1f1f1; padding: 2px 6px; border-radius: 3px; font-size: .9em; }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ddd; padding: .5rem .8rem; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  .note { background: #fffbea; border-left: 4px solid #f0c419; padding: .8rem 1rem; margin: 1rem 0; }
+  .trouble { background: #fff1f0; border-left: 4px solid #e74c3c; padding: 1rem 1.2rem; margin: 1.5rem 0; border-radius: 4px; }
+  .trouble h3 { margin-top: 0; color: #c0392b; }
+  .date { color: #888; font-size: .9rem; }
+  .ng { color: #e74c3c; font-weight: bold; }
+  .ok { color: #27ae60; font-weight: bold; }
+  .diagram { background: #f9f9f9; border: 1px solid #ddd; padding: 1rem; border-radius: 6px; margin: 1rem 0; font-family: "Menlo", monospace; white-space: pre; font-size: .85rem; overflow-x: auto; }
+  .summary { background: #eaf4ff; border-left: 4px solid #3490dc; padding: 1rem 1.2rem; margin: 1.5rem 0; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Laravel ToDoアプリ 作成手順 (Day 4)</h1>
+<p class="date">作業日: 2026-04-15 / 内容: ToDo削除機能の実装</p>
+
+<h2>本日のゴール</h2>
+<ul>
+  <li>ToDoの<strong>削除機能</strong>を実装</li>
+  <li>削除前の<strong>確認ダイアログ</strong>でうっかり削除を防止</li>
+  <li>一覧画面に<strong>成功メッセージ</strong>を表示</li>
+</ul>
+
+<h2>処理の流れ</h2>
+<div class="diagram">[詳細画面]
+    ↓ 「削除」ボタンクリック
+    ↓ ブラウザの confirm() ダイアログ
+    ↓ OK
+    ↓ POST /todos/{id} (_method=DELETE)
+[TodoController@destroy]
+    ↓ ルートモデルバインディングで該当レコード取得
+    ↓ $todo-&gt;delete()
+[DB: レコード削除]
+    ↓ redirect
+[一覧画面] + 成功メッセージ「ToDoを削除しました」</div>
+
+<h2>1. コントローラーの destroy メソッド</h2>
+<p><code>app/Http/Controllers/TodoController.php</code></p>
+<pre><code>public function destroy(Todo $todo)
+{
+    $todo-&gt;delete();
+
+    return redirect()-&gt;route('todos.index')
+        -&gt;with('success', 'ToDoを削除しました');
+}</code></pre>
+
+<div class="note">
+  <strong>ポイント:</strong>
+  <ul>
+    <li>ルートモデルバインディング (<code>Todo $todo</code>) で対象レコードを自動取得</li>
+    <li><code>-&gt;with('success', ...)</code> でフラッシュメッセージをセッションに保存</li>
+    <li>ルートは <code>Route::resource('todos', ...)</code> で既に登録済み</li>
+  </ul>
+</div>
+
+<h2>2. 詳細画面に削除ボタンを追加</h2>
+<p><code>resources/views/todos/show.blade.php</code> のアクションエリア:</p>
+<pre><code>&lt;div class="px-8 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center"&gt;
+    &lt;form action="{{ route('todos.destroy', $todo) }}" method="POST"
+          onsubmit="return confirm('このToDoを削除します。よろしいですか？');"&gt;
+        @csrf
+        @method('DELETE')
+        &lt;button type="submit"
+                class="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition"&gt;
+            削除
+        &lt;/button&gt;
+    &lt;/form&gt;
+
+    &lt;a href="{{ route('todos.edit', $todo) }}"
+       class="px-4 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition"&gt;
+        編集
+    &lt;/a&gt;
+&lt;/div&gt;</code></pre>
+
+<h3>ポイント解説</h3>
+
+<h4>なぜ <code>&lt;a&gt;</code> ではなく <code>&lt;form&gt;</code> なのか</h4>
+<p>削除は <strong>DELETEメソッド</strong> で送信する必要がある。<code>&lt;a&gt;</code> タグは GET しか送れないため、<code>&lt;form&gt;</code> + <code>@method('DELETE')</code> を使う。</p>
+
+<h4>@method('DELETE') の仕組み</h4>
+<div class="diagram">HTMLフォームは本来 GET / POST しか送れない
+        ↓
+Laravel は hidden フィールド _method=DELETE を自動で埋め込む
+        ↓
+&lt;input type="hidden" name="_method" value="DELETE"&gt;
+        ↓
+サーバー側で Laravel が DELETE リクエストとして解釈し、
+destroy メソッドへルーティング</div>
+
+<h4>@csrf とは</h4>
+<p>Cross-Site Request Forgery (CSRF) 対策のトークン。Laravelでは <code>POST</code>/<code>PUT</code>/<code>DELETE</code> すべてで必須。省くと 419 エラー。</p>
+
+<h4>onsubmit の確認ダイアログ</h4>
+<pre><code>onsubmit="return confirm('このToDoを削除します。よろしいですか？');"</code></pre>
+<ul>
+  <li>ブラウザ標準の <code>confirm()</code> でOK/キャンセルを選択できる</li>
+  <li>キャンセル時は <code>false</code> が返り、フォーム送信がキャンセルされる</li>
+  <li>シンプルだが実用十分。モダンなモーダルにしたい場合は JS で自作も可</li>
+</ul>
+
+<h4>ボタンの視覚デザイン</h4>
+<table>
+  <thead><tr><th>ボタン</th><th>スタイル</th><th>意図</th></tr></thead>
+  <tbody>
+    <tr><td>削除</td><td>テキスト + 赤色 + ホバーで薄赤背景</td><td>目立ちすぎず、でも危険性が伝わる</td></tr>
+    <tr><td>編集</td><td>塗りつぶし (濃色)</td><td>主要アクションとして強調</td></tr>
+  </tbody>
+</table>
+
+<h2>3. 一覧画面の成功メッセージ</h2>
+<p><code>resources/views/todos/index.blade.php</code> の <code>@section('content')</code> 直後:</p>
+<pre><code>@if (session('success'))
+    &lt;div class="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg mb-4"&gt;
+        {{ session('success') }}
+    &lt;/div&gt;
+@endif</code></pre>
+<p>作成・更新・削除すべての操作後のメッセージが共通でここに表示される。</p>
+
+<h2>動作確認</h2>
+<ol>
+  <li>詳細画面で「削除」ボタンをクリック</li>
+  <li>「このToDoを削除します。よろしいですか？」の確認ダイアログが表示される</li>
+  <li>OKで削除 → 一覧画面に戻り、削除成功メッセージ表示</li>
+  <li>キャンセルで何も起きない</li>
+</ol>
+
+<hr>
+
+<div class="summary">
+<h2 style="margin-top: 0;">🎉 CRUD 機能完成</h2>
+<table>
+  <thead><tr><th>機能</th><th>HTTPメソッド</th><th>URL</th><th>コントローラー</th></tr></thead>
+  <tbody>
+    <tr><td>一覧</td><td>GET</td><td>/todos</td><td>index</td></tr>
+    <tr><td>新規作成画面</td><td>GET</td><td>/todos/create</td><td>create</td></tr>
+    <tr><td>新規保存</td><td>POST</td><td>/todos</td><td>store</td></tr>
+    <tr><td>詳細</td><td>GET</td><td>/todos/{id}</td><td>show</td></tr>
+    <tr><td>編集画面</td><td>GET</td><td>/todos/{id}/edit</td><td>edit</td></tr>
+    <tr><td>更新</td><td>PUT</td><td>/todos/{id}</td><td>update</td></tr>
+    <tr><td>削除</td><td>DELETE</td><td>/todos/{id}</td><td>destroy</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>今後の拡張案</h2>
+<table>
+  <thead><tr><th>項目</th><th>難易度</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>確認ダイアログのモーダル化</td><td>低</td><td>標準 confirm をきれいなUIに</td></tr>
+    <tr><td>ページネーション</td><td>低</td><td><code>Todo::paginate(10)</code></td></tr>
+    <tr><td>ステータスでの絞り込み</td><td>中</td><td>一覧に絞り込みセレクト追加</td></tr>
+    <tr><td>並び替え</td><td>中</td><td>作成日 / 開始日 / 完了日</td></tr>
+    <tr><td>完了済みToDoの非表示</td><td>中</td><td>表示切り替え機能</td></tr>
+    <tr><td>実績日の自動記録</td><td>中</td><td><code>actual_started_at</code> / <code>actual_completed_at</code></td></tr>
+  </tbody>
+</table>
+
+<h2>GitHub への反映</h2>
+<pre><code>cd /Users/jmino/myProject/todo-app
+git add .
+git commit -m "Add 削除機能と本日の手順書"
+git push</code></pre>
+
+</body>
+</html>

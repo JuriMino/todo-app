@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Todo;
-use Illuminate\Http\Request;
 use App\Http\Requests\StoreTodoRequest;
 use App\Http\Requests\UpdateTodoRequest;
 
@@ -72,6 +71,9 @@ class TodoController extends Controller
      */
     public function destroy(Todo $todo)
     {
-        //
+        //削除する
+        $todo->delete();
+
+        return redirect()->route('todos.index')->with('success', 'ToDoを削除しました');
     }
 }
